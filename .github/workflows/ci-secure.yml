@@ -144,14 +144,16 @@ jobs:
 
       - name: Start app on host
         run: |
-        pip install -r app/requirements.txt
-          cd app && python -c "
-          from app import app
-          app.run(host='0.0.0.0', port=5000)
-          " &
+          pip install -r app/requirements.txt
+          cd app && gunicorn --bind 0.0.0.0:5000 --daemon app:app
           echo "Waiting for app..."
           for i in $(seq 1 30); do
-            curl -s http://localhost:5000/health && break
+            if curl -s http://localhost:5000/health; then
+              echo ""
+              echo "App is ready!"
+              break
+            fi
+            echo "Attempt $i/30..."
             sleep 2
           done
 
