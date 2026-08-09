@@ -1,4 +1,4 @@
-kkname: CI-Secure
+name: CI-Secure
 on: [push, pull_request]
 
 jobs:
@@ -29,9 +29,40 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  dependency-scan:
+    name: "Dependency Scan - pip-audit"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r app/requirements.txt
+
+      - name: Run pip-audit
+        run: |
+          pip install pip-audit
+          pip-audit -r app/requirements.txt
+
+  iac-scan:
+    name: "IaC Scan - Checkov"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: terraform/
+          framework: terraform
+          soft_fail: false
+
   build:
     name: "Build Docker Image"
-    needs: [sast-scan, secret-scan]
+    needs: [sast-scan, secret-scan, dependency-scan, iac-scan]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
