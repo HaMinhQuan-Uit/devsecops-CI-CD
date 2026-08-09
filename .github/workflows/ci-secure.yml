@@ -6,6 +6,7 @@ permissions:
   packages: write
   security-events: write
   id-token: write
+  issues: write
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository }}
@@ -118,3 +119,37 @@ jobs:
         run: cosign sign --yes ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
         env:
           COSIGN_EXPERIMENTAL: "1"
+
+  dast-scan:
+    name: "DAST - OWASP ZAP"
+    needs: [sast-scan, secret-scan, dependency-scan, iac-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start app
+        run: |
+          docker build -t devsecops-demo:test .
+          docker run -d -p 5000:5000 --name test-app devsecops-demo:test
+          echo "Waiting for app to start..."
+          for i in $(seq 1 30); do
+            curl -s http://localhost:5000/health && break
+            sleep 2
+          done
+
+      - name: Run OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: "http://localhost:5000"
+          allow_issue_writing: false
+
+      - name: Upload ZAP report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-report
+          path: report_html.html
+
+      - name: Stop app
+        if: always()
+        run: docker stop test-app
