@@ -9,7 +9,68 @@ permissions:
   issues: write
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  sast-scan:
+    name: "SAST - Semgrep"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/python
+            p/flask
+            p/security-audit
+
+  secret-scan:
+    name: "Secret Scan - Gitleaks"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-scan:
+    name: "Dependency Scan - pip-audit"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r app/requirements.txt
+
+      - name: Run pip-audit
+        run: |
+          pip install pip-audit
+          pip-audit -r app/requirements.txt
+
+  iac-scan:
+    name: "IaC Scan - Checkov"
+    runs-on: ubuntu-latest
+name: CI-Secure
+on: [push, pull_request]
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+  id-token: write
+  issues: write
+
+env:
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
@@ -79,6 +140,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set image name lowercase
+        run: echo "IMAGE_NAME=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -136,11 +200,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build and start app
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Start app on host
         run: |
-          docker build -t devsecops-demo:test .
-          docker run -d -p 5000:5000 --name test-app devsecops-demo:test
-          echo "Waiting for app to start..."
+          pip install -r app/requirements.txt
+          cd app && python -c "
+          from app import app
+          app.run(host='0.0.0.0', port=5000)
+          " &
+          echo "Waiting for app..."
           for i in $(seq 1 30); do
             curl -s http://localhost:5000/health && break
             sleep 2
@@ -158,10 +229,6 @@ jobs:
         with:
           name: zap-report
           path: report_html.html
-
-      - name: Stop app
-        if: always()
-        run: docker stop test-app
 
   policy-gate:
     name: "Policy Gate - OPA Conftest"
@@ -186,7 +253,7 @@ jobs:
 
       - name: Gate decision
         run: |
-          echo " All policy gates passed."
+          echo "All policy gates passed."
           echo "Image: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
           echo "Ready for production deployment."
 
