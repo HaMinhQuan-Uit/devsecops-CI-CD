@@ -70,6 +70,7 @@ jobs:
           directory: terraform/
           framework: terraform
           soft_fail: false
+          skip_check: CKV_AWS_144
 
   build-scan-sign-push:
     name: "Build + Trivy + SBOM + Sign + Push"

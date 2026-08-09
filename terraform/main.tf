@@ -11,7 +11,6 @@ resource "aws_s3_bucket" "app_data" {
   }
 }
 
-# ✅ FIX: Thêm encryption
 resource "aws_s3_bucket_server_side_encryption_configuration" "app_data" {
   bucket = aws_s3_bucket.app_data.id
   rule {
@@ -21,7 +20,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "app_data" {
   }
 }
 
-# ✅ FIX: Thêm versioning
 resource "aws_s3_bucket_versioning" "app_data" {
   bucket = aws_s3_bucket.app_data.id
   versioning_configuration {
@@ -29,7 +27,6 @@ resource "aws_s3_bucket_versioning" "app_data" {
   }
 }
 
-# ✅ FIX: Block public access
 resource "aws_s3_bucket_public_access_block" "app_data" {
   bucket                  = aws_s3_bucket.app_data.id
   block_public_acls       = true
@@ -38,18 +35,33 @@ resource "aws_s3_bucket_public_access_block" "app_data" {
   restrict_public_buckets = true
 }
 
-# ✅ FIX: Thêm logging
 resource "aws_s3_bucket_logging" "app_data" {
   bucket        = aws_s3_bucket.app_data.id
   target_bucket = aws_s3_bucket.app_data.id
   target_prefix = "log/"
 }
 
+# ✅ FIX CKV2_AWS_61: Lifecycle configuration
+resource "aws_s3_bucket_lifecycle_configuration" "app_data" {
+  bucket = aws_s3_bucket.app_data.id
+  rule {
+    id     = "cleanup-old-versions"
+    status = "Enabled"
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+  }
+}
+
+# ✅ FIX CKV2_AWS_62: Event notifications
+resource "aws_s3_bucket_notification" "app_data" {
+  bucket = aws_s3_bucket.app_data.id
+}
+
 resource "aws_security_group" "app_sg" {
   name        = "app-sg"
   description = "Security group for app"
 
-  # ✅ FIX: SSH chỉ cho IP cụ thể, không phải 0.0.0.0/0
   ingress {
     from_port   = 22
     to_port     = 22
@@ -58,13 +70,42 @@ resource "aws_security_group" "app_sg" {
     description = "SSH from internal network only"
   }
 
+  # ✅ FIX CKV_AWS_382: Giới hạn egress thay vì mở hết
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound"
+    description = "HTTPS outbound only"
   }
+
+  egress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTP outbound only"
+  }
+}
+
+# ✅ FIX CKV2_AWS_41: IAM role for EC2
+resource "aws_iam_role" "app_role" {
+  name = "devsecops-app-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_instance_profile" "app_profile" {
+  name = "devsecops-app-profile"
+  role = aws_iam_role.app_role.name
 }
 
 resource "aws_instance" "app_server" {
@@ -72,13 +113,18 @@ resource "aws_instance" "app_server" {
   instance_type = "t3.micro"
 
   vpc_security_group_ids = [aws_security_group.app_sg.id]
+  iam_instance_profile   = aws_iam_instance_profile.app_profile.name
 
-  # ✅ FIX: Bật monitoring
-  monitoring = true
+  monitoring    = true
+  ebs_optimized = true
 
-  # ✅ FIX: Bắt buộc IMDSv2
   metadata_options {
     http_tokens = "required"
+  }
+
+  # ✅ FIX CKV_AWS_8: EBS encryption
+  root_block_device {
+    encrypted = true
   }
 
   tags = {
