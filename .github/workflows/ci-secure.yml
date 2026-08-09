@@ -2,7 +2,23 @@ name: CI-Secure
 on: [push, pull_request]
 
 jobs:
+  sast-scan:
+    name: "SAST - Semgrep"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/python
+            p/flask
+            p/security-audit
+
   build:
+    name: "Build Docker Image"
+    needs: sast-scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
