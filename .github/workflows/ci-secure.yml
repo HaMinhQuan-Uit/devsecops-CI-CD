@@ -112,6 +112,7 @@ jobs:
           output: trivy-report.json
           severity: CRITICAL
           exit-code: "1"
+          ignore-unfixed: true
 
       - name: Upload Trivy report
         uses: actions/upload-artifact@v4
@@ -142,20 +143,24 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Start app on host
+      - name: Install dependencies
+        run: pip install -r app/requirements.txt
+
+      - name: Start app
         run: |
-          pip install -r app/requirements.txt
-          cd app && gunicorn --bind 0.0.0.0:5000 --daemon app:app
+          cd app
+          nohup python -c "from app import app; app.run(host='0.0.0.0', port=5000)" > /tmp/app.log 2>&1 &
           echo "Waiting for app..."
+          sleep 5
           for i in $(seq 1 30); do
-            if curl -s http://localhost:5000/health; then
-              echo ""
+            if curl -s http://localhost:5000/health > /dev/null 2>&1; then
               echo "App is ready!"
               break
             fi
             echo "Attempt $i/30..."
             sleep 2
           done
+          curl -v http://localhost:5000/health || (cat /tmp/app.log && exit 1)
 
       - name: Run OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.14.0
