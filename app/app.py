@@ -1,7 +1,6 @@
-from flask import Flask, request, escape
+kfrom flask import Flask, request, render_template_string
 import sqlite3
 import subprocess
-import shlex
 
 app = Flask(__name__)
 
@@ -13,18 +12,17 @@ def health():
 
 @app.route("/")
 def index():
-    return "<h1>DevSecOps Demo App</h1><p>Pipeline security demo</p>"
+    return render_template_string("<h1>DevSecOps Demo App</h1><p>Pipeline security demo</p>")
 
 
-# ✅ FIX XSS: dùng escape() để sanitize input
+# ✅ FIX: dùng render_template_string (auto-escape) thay vì f-string
 @app.route("/greet")
 def greet():
     name = request.args.get("name", "World")
-    safe_name = escape(name)
-    return f"<h1>Hello {safe_name}!</h1>"
+    return render_template_string("<h1>Hello {{ name }}!</h1>", name=name)
 
 
-# ✅ FIX SQLi: dùng parameterized query
+# ✅ FIX: parameterized query
 @app.route("/user")
 def get_user():
     user_id = request.args.get("id", "")
@@ -36,11 +34,10 @@ def get_user():
     return str(result)
 
 
-# ✅ FIX Command Injection: validate input, không dùng shell=True
+# ✅ FIX: validate input, không dùng shell=True
 @app.route("/ping")
 def ping():
     host = request.args.get("host", "127.0.0.1")
-    # Chỉ cho phép IP address format
     parts = host.split(".")
     if len(parts) != 4 or not all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
         return {"error": "Invalid IP address"}, 400
@@ -49,4 +46,4 @@ def ping():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="127.0.0.1", port=5000, debug=False)
