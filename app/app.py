@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template_string
+from flask import Flask, request, render_template
 import sqlite3
 import subprocess
 
@@ -12,17 +12,15 @@ def health():
 
 @app.route("/")
 def index():
-    return render_template_string("<h1>DevSecOps Demo App</h1><p>Pipeline security demo</p>")
+    return render_template("index.html")
 
 
-# ✅ FIX: dùng render_template_string (auto-escape) thay vì f-string
 @app.route("/greet")
 def greet():
     name = request.args.get("name", "World")
-    return render_template_string("<h1>Hello {{ name }}!</h1>", name=name)
+    return render_template("greet.html", name=name)
 
 
-# ✅ FIX: parameterized query
 @app.route("/user")
 def get_user():
     user_id = request.args.get("id", "")
@@ -34,7 +32,6 @@ def get_user():
     return str(result)
 
 
-# ✅ FIX: validate input, không dùng shell=True
 @app.route("/ping")
 def ping():
     host = request.args.get("host", "127.0.0.1")
